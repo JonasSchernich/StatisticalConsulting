@@ -2,3 +2,5 @@ numpy
 pandas
 scipy
 rpy2
+matplotlib
+seaborn

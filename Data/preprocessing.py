@@ -14,6 +14,18 @@ class CohortPreprocessor:
         """
         self.cohorts_dict = cohorts_dict
 
+    def fix_r_na_values(self):
+        for cohort_name, cohort_data in self.cohorts_dict.items():
+            for data_type in ['pData', 'fData', 'exprs']:
+                if data_type in cohort_data:
+                    df = cohort_data[data_type]
+                    for column in df.columns:
+                        unique_values = df[column].unique()
+                        if len(unique_values) == 1 and unique_values[0] == -2147483648:
+                            df[column] = None
+                    cohort_data[data_type] = df
+            self.cohorts_dict[cohort_name] = cohort_data
+
     def standardize(self, df):
         """
         Standardize a DataFrame by subtracting the mean and dividing by the standard deviation for each row.
@@ -35,14 +47,14 @@ class CohortPreprocessor:
 
     def preprocess_all(self):
         """
-        Apply standardization to the expression data for all cohorts.
+        Apply standardization to the expression data for all cohorts and fixing R NA values
         """
+        self.fix_r_na_values()
         for cohort in self.cohorts_dict.keys():
-            exprs_df = self.cohorts_dict[cohort]['exprs']  # Get the exprs data
-            standardized_exprs_df = self.standardize(exprs_df)  # Apply standardization
-
-            # Overwrite the original exprs data with the standardized version
-            self.cohorts_dict[cohort]['exprs'] = standardized_exprs_df
+            if 'exprs' in self.cohorts_dict[cohort]:
+                exprs_df = self.cohorts_dict[cohort]['exprs']
+                standardized_exprs_df = self.standardize(exprs_df)
+                self.cohorts_dict[cohort]['exprs'] = standardized_exprs_df
 
     def get_preprocessed_data(self):
         """

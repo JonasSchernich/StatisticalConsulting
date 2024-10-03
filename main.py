@@ -1,3 +1,4 @@
+import pickle
 from Data.load_data import CohortLoader
 from Data.preprocessing import CohortPreprocessor
 from Modeling.survival_ana import SurvivalAnalysis
@@ -33,6 +34,10 @@ loaded_cohorts = load_cohorts(rds_file_names)
 
 # Step 2: Preprocess the loaded cohorts
 preprocessed_cohorts = preprocess_cohorts(loaded_cohorts)
+
+# aktuell nur eine zwischenlösung, damit man die Daten nicht jedes mal neu laden muss, wenn man sie in anderen Files nutzt
+with open('Data/preprocessed_cohorts.pkl', 'wb') as f:
+    pickle.dump(preprocessed_cohorts, f)
 
 # Step 3: Run the survival analysis (currently just a placeholder)
 run_survival_analysis()
