@@ -45,9 +45,57 @@ class CohortPreprocessor:
 
         return standardized_df
 
+    def create_merged_pData(self):
+        """
+        Creates a merged pData DataFrame containing only columns that are present in all cohorts.
+        Preserves the original index (patient ID) from each cohort's pData.
+        """
+        pData_dfs = []
+        for cohort_name, cohort_data in self.cohorts_dict.items():
+            if 'pData' in cohort_data:
+                df = cohort_data['pData'].copy()
+                df['original_cohort'] = cohort_name  # Add cohort name for reference
+                pData_dfs.append(df)
+
+        # Find common columns
+        common_columns = set.intersection(*[set(df.columns) for df in pData_dfs])
+        common_columns = list(common_columns) + ['original_cohort']
+
+        # Filter dataframes for common columns and concatenate
+        merged_pData = pd.concat([df[common_columns] for df in pData_dfs], axis=0)
+
+        # Create a new unique index if there are any duplicates
+        if merged_pData.index.duplicated().any():
+            merged_pData.index = [f"{idx}_{cohort}" for idx, cohort in
+                                  zip(merged_pData.index, merged_pData['original_cohort'])]
+
+        # Remove the temporary 'original_cohort' column
+        merged_pData = merged_pData.drop('original_cohort', axis=1)
+
+        return merged_pData
+
+    def create_merged_exprs(self):
+        """
+        Creates a merged exprs DataFrame containing only genes (rows) that are present in all cohorts.
+        Columns are merged based on the patients from all cohorts.
+        """
+        exprs_dfs = [cohort_data['exprs'] for cohort_data in self.cohorts_dict.values() if 'exprs' in cohort_data]
+
+        # Find common genes (index)
+        common_genes = set.intersection(*[set(df.index) for df in exprs_dfs])
+
+        # Filter dataframes for common genes
+        filtered_exprs_dfs = [df.loc[list(common_genes)] for df in exprs_dfs]
+
+        # Merge dataframes
+        merged_exprs = pd.concat(filtered_exprs_dfs, axis=1)
+
+        return merged_exprs
+
     def preprocess_all(self):
         """
-        Apply standardization to the expression data for all cohorts and fixing R NA values
+        Apply standardization to the expression data for all cohorts, fixing R NA values,
+        and create merged dataframes.
         """
         self.fix_r_na_values()
         for cohort in self.cohorts_dict.keys():
@@ -56,9 +104,17 @@ class CohortPreprocessor:
                 standardized_exprs_df = self.standardize(exprs_df)
                 self.cohorts_dict[cohort]['exprs'] = standardized_exprs_df
 
+        # Create merged dataframes
+        self.merged_cohorts_pData = self.create_merged_pData()
+        self.merged_cohorts_exprs = self.create_merged_exprs()
+
     def get_preprocessed_data(self):
         """
-        Returns the preprocessed cohorts dictionary.
+        Returns the preprocessed cohorts dictionary and merged dataframes.
         """
-        return self.cohorts_dict
+        return {
+            'cohorts': self.cohorts_dict,
+            'merged_pData': self.merged_cohorts_pData,
+            'merged_exprs': self.merged_cohorts_exprs
+        }
 
