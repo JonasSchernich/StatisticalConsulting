@@ -26,6 +26,27 @@ class CohortPreprocessor:
                     cohort_data[data_type] = df
             self.cohorts_dict[cohort_name] = cohort_data
 
+    def fix_pData_types(self):
+        """
+        Converts specific columns in each cohort's pData DataFrame to appropriate types.
+        """
+        for cohort_name, cohort_data in self.cohorts_dict.items():
+            if 'pData' in cohort_data:
+                df = cohort_data['pData']
+                if 'AGE' in df.columns:
+                    # Convert the AGE column to numeric, coercing errors to NaN
+                    df['AGE'] = pd.to_numeric(df['AGE'], errors='coerce')
+
+                if 'PRE_OPERATIVE_PSA' in df.columns:
+                    # Remove any non-numeric characters like '>', '<' before converting to numeric
+                    df['PRE_OPERATIVE_PSA'] = df['PRE_OPERATIVE_PSA'].astype(str).str.replace(r'[^0-9.]', '',
+                                                                                              regex=True)
+                    df['PRE_OPERATIVE_PSA'] = pd.to_numeric(df['PRE_OPERATIVE_PSA'], errors='coerce')
+
+                # Store the fixed pData back into the cohort_data
+                cohort_data['pData'] = df
+                self.cohorts_dict[cohort_name] = cohort_data
+
     def standardize(self, df):
         """
         Standardize a DataFrame by subtracting the mean and dividing by the standard deviation for each row.
@@ -98,6 +119,7 @@ class CohortPreprocessor:
         and create merged dataframes.
         """
         self.fix_r_na_values()
+        self.fix_pData_types()
         for cohort in self.cohorts_dict.keys():
             if 'exprs' in self.cohorts_dict[cohort]:
                 exprs_df = self.cohorts_dict[cohort]['exprs']
