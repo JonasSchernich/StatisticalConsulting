@@ -1,3 +1,8 @@
+#if (!require("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")#
+
+#BiocManager::install("Biobase")
+
 library(Biobase)
 
 #Load data

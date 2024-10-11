@@ -1,3 +1,4 @@
+# %%
 import os
 import rpy2.robjects as robjects
 from rpy2.robjects import pandas2ri
@@ -23,30 +24,32 @@ class CohortLoader:
 
 
         rds_file_path = os.path.join("Data", rds_file_name)
-
+        #print(rds_file_path)
         # Define the R code to load and convert the ExpressionSet objects
-        r_code = f'''
+        robjects.r('''
         library(Biobase)
-
-        # Load data from the RDS file
-        cohorts <- readRDS("{rds_file_path}")
-
+        
         # Function to convert ExpressionSet to list of data frames
-        convertExpressionSet <- function(eset) {{
+        convertExpressionSet <- function(eset){
             list(
                 pData = as.data.frame(pData(eset)),
                 fData = as.data.frame(fData(eset)),
                 exprs = as.data.frame(exprs(eset))
             )
-        }}
+        }
 
-        # Convert all cohorts to list of data frames
-        cohorts_list <- lapply(cohorts, convertExpressionSet)
-        '''
+        # Loads data and calls convertExpressionSet per cohort dataset
+        loadData <- function(path){
+            cohorts <- readRDS(path)
+            # Convert all cohorts to list of data frames
+            cohorts_list <- lapply(cohorts, convertExpressionSet)
+        } 
+        ''')
 
         # Execute the R code
-        robjects.r(r_code)
-        cohorts_list_r = robjects.r['cohorts_list']
+        # cohorts_list_r = robjects.r['cohorts_list']
+        loadData = robjects.r['loadData']
+        cohorts_list_r = loadData(rds_file_path)
 
         # Convert the R list to a Python dictionary
         for cohort_name in cohorts_list_r.names:
