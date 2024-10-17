@@ -51,17 +51,6 @@ processed_cohorts <- main()
 
 
 
-## Na Imputation for single columns
-na_list <- data.frame()
-na_list[1, 2] = 1
-for (i in 1:9) {
-  for (j in 1:ncol(processed_cohorts[[i]]$pData)) {
-    if (any(is.na(processed_cohorts[[i]]$pData[, j])) && !all(is.na(processed_cohorts[[i]]$pData[, j]))) {
-      na_list[nrow(na_list) + 1, 1] <- names(processed_cohorts)[i]
-      na_list[nrow(na_list) + 1, 2] <-colnames(processed_cohorts[[i]]$pData)[j]
-    }
-  }
-}
 
 
 ################## mice für einzlene Kohorten
@@ -175,58 +164,205 @@ completed_pData <- complete(imputed_data)
 
 
 
-
-# Funktion zum Mergen der exprs Dataframes
-merge_exprs <- function(processed_cohorts) {
-  merged_exprs <- data.frame()
-  
-  for (cohort_name in names(processed_cohorts)) {
-    exprs_data <- processed_cohorts[[cohort_name]]$exprs
-    
-    # Füge eine Spalte hinzu, um die Kohorte zu identifizieren
-    exprs_data$cohort <- cohort_name
-    
-    # Transponiere das DataFrame, um Gene als Spalten zu haben
-    exprs_data_t <- t(exprs_data)
-    exprs_data_t <- as.data.frame(exprs_data_t)
-    
-    # Füge die Probe-IDs als Spalte hinzu
-    exprs_data_t$probe_id <- rownames(exprs_data_t)
-    
-    if (nrow(merged_exprs) == 0) {
-      merged_exprs <- exprs_data_t
-    } else {
-      # Finde gemeinsame Gene
-      common_genes <- intersect(colnames(merged_exprs), colnames(exprs_data_t))
-      
-      # Merge basierend auf gemeinsamen Genen
-      merged_exprs <- merge(merged_exprs[, c("probe_id", "cohort", common_genes)], 
-                            exprs_data_t[, c("probe_id", "cohort", common_genes)], 
-                            all = TRUE)
+############# exprs emrgen und transponieren
+create_merged_exprs <- function(cohorts_dict) {
+  # Extract exprs dataframes from cohorts
+  exprs_dfs <- lapply(cohorts_dict, function(cohort_data) {
+    if ('exprs' %in% names(cohort_data)) {
+      return(cohort_data$exprs)
     }
-  }
+    return(NULL)
+  })
+  exprs_dfs <- exprs_dfs[!sapply(exprs_dfs, is.null)]
   
-  # Setze probe_id als Zeilenname und entferne die Spalte
-  rownames(merged_exprs) <- merged_exprs$probe_id
-  merged_exprs$probe_id <- NULL
+  # Find common genes (row names)
+  common_genes <- Reduce(intersect, lapply(exprs_dfs, rownames))
+  
+  # Filter dataframes for common genes
+  filtered_exprs_dfs <- lapply(exprs_dfs, function(df) {
+    df[common_genes, , drop = FALSE]
+  })
+  
+  # Merge dataframes
+  merged_exprs <- do.call(cbind, filtered_exprs_dfs)
   
   return(merged_exprs)
 }
 
-# Merge alle exprs Dataframes
-merged_exprs <- merge_exprs(processed_cohorts)
+merged_exprs <- create_merged_exprs(processed_cohorts)
 
-# Überprüfe die Dimensionen des gemergten Dataframes
-print(dim(merged_exprs))
+merged_exprs_t <- t(merged_exprs)
 
-# Zeige die ersten paar Zeilen und Spalten
-print(merged_exprs[1:5, 1:10])
+write.csv(completed_pData, file = "completed_pData.csv", row.names = TRUE)
 
-# Überprüfe, wie viele Gene (Spalten) wir haben
-print(ncol(merged_exprs) - 1)  # -1 wegen der 'cohort' Spalte
 
-# Überprüfe, wie viele Proben (Zeilen) wir für jede Kohorte haben
-print(table(merged_exprs$cohort))
+write.csv(merged_exprs_t, file = "merged_exprs_t.csv", row.names = TRUE)
+
+
+################################### Gen Daten imputation probieren
+
+############!!! generell schauen, ob es nicht sinnvoller ist spalten die nur in ganz wenigen Dendatensätzen vorhanden sind trotzdem zu droppen?
+library(impute)
+
+
+
+
+create_merged_exprs_for_imputation <- function(cohorts_dict) {
+  # Extrahiere und transponiere exprs Dataframes aus den Kohorten
+  exprs_dfs <- lapply(cohorts_dict, function(cohort_data) {
+    if ('exprs' %in% names(cohort_data)) {
+      return(t(cohort_data$exprs))  # Transponieren hier
+    }
+    return(NULL)
+  })
+  exprs_dfs <- exprs_dfs[!sapply(exprs_dfs, is.null)]
+  
+  # Finde alle einzigartigen Gene
+  all_genes <- Reduce(union, lapply(exprs_dfs, colnames))
+  
+  # Erstelle einen leeren Dataframe mit allen Genen als Spalten
+  all_exprs_merged <- data.frame(matrix(ncol = length(all_genes), nrow = 0))
+  colnames(all_exprs_merged) <- all_genes
+  
+  # Füge Daten aus jeder Kohorte hinzu
+  for (df in exprs_dfs) {
+    # Erstelle einen temporären Dataframe mit allen Genen
+    temp_df <- data.frame(matrix(NA, nrow = nrow(df), ncol = length(all_genes)))
+    colnames(temp_df) <- all_genes
+    
+    # Fülle die vorhandenen Daten ein
+    common_genes <- intersect(colnames(df), all_genes)
+    temp_df[, common_genes] <- df[, common_genes]
+    
+    # Füge Zeilennamen hinzu 
+    rownames(temp_df) <- rownames(df)
+    
+    # Füge zum Dataframe hinzu
+    all_exprs_merged <- rbind(all_exprs_merged, temp_df)
+  }
+  
+  return(all_exprs_merged)
+}
+all_exprs_merged <- create_merged_exprs_for_imputation(processed_cohorts)
+
+
+# Konvertiere den Dataframe in eine Matrix für impute.knn
+all_exprs_matrix <- as.matrix(all_exprs_merged)
+
+# Führe die kNN Imputation durch
+imputed_data <- impute.knn(all_exprs_matrix)
+
+# Das Ergebnis ist eine Liste. Die imputierte Matrix ist im 'data' Element
+imputed_matrix <- imputed_data$data
+
+# Konvertiere zurück zu einem Dataframe, wenn nötig
+imputed_df <- as.data.frame(imputed_matrix)
+
+# Spalten mit zu vielen NAs entfernen
+missing_values <- colSums(is.na(all_exprs_merged))
+
+total_rows <- nrow(all_exprs_merged)
+
+valid_columns <- missing_values / total_rows < 0.2
+
+filtered_exprs <- all_exprs_merged[, valid_columns]
+
+
+
+
+
+#KNN imputation
+imputed_data <- impute.knn(as.matrix(filtered_exprs[, sapply(filtered_exprs, is.numeric)]))
+
+
+# Das Ergebnis ist eine Liste. Die imputierte Matrix ist im 'data' Element
+imputed_matrix <- imputed_data$data
+
+# Konvertiere zurück zu einem Dataframe, wenn nötig
+imputed_df <- as.data.frame(imputed_matrix)
+
+
+
+
+####### Testen wie gut die imputation klappt
+#####Aktuell lösche ich noch NA Werte, das muss man nochmal sinnvoller machen, ggf werte aus originalkohorten löschen und dann predictete werte mit den Werten aus riginalkohorten abgleichen
+library(caret)
+
+filtered_exprs_no_na <- na.omit(filtered_exprs)
+set.seed(123)
+
+# Funktion zum Einfügen von künstlichen NA-Werten
+insert_na <- function(x, prop = 0.1) {
+  is.na(x) <- sample(length(x), size = floor(prop * length(x)))
+  return(x)
+}
+
+# Erstellen Sie eine Kopie der Daten mit künstlichen NA-Werten
+data_with_na <- apply(filtered_exprs_no_na, 2, insert_na)
+
+# Führen Sie die Imputation durch
+imputed_test <- impute.knn(data_with_na)$data
+
+# Berechnen Sie den RMSE für die imputierten Werte
+rmse <- sqrt(mean((imputed_test[is.na(data_with_na)] - filtered_exprs_no_na[is.na(data_with_na)])^2))
+print(paste("RMSE:", rmse))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+################################### 
+install.packages("glmnet")
+library(glmnet)
+library(survival)
+### 0 time to event zeilen entfernen
+completed_pData_no_0_times <- completed_pData[completed_pData$MONTH_TO_BCR > 0,]
+subset_exprs <- merged_exprs_t[rownames(merged_exprs_t) %in% rownames(completed_pData_no_0_times), ]
+surv_object <- Surv(time = completed_pData_no_0_times$MONTH_TO_BCR, event = completed_pData_no_0_times$BCR_STATUS)
+
+X <- as.matrix(subset_exprs)
+fit <- glmnet(X, surv_object, family = "cox", alpha = 1)
+plot(fit)
+cv_fit <- cv.glmnet(X, surv_object, family = "cox", alpha = 1)
+plot(cv_fit)
+
+best_lambda <- cv_fit$lambda.1se
+best_lambda
+# Fit the final model with the optimal lambda
+final_model <- glmnet(X, surv_object, family = "cox", alpha = 1, lambda = best_lambda)
+
+
+# Extrahiere die Koeffizienten des finalen Modells
+selected_genes_coef <- coef(final_model)
+
+# Extrahiere die Gene mit nicht-null Koeffizienten
+selected_gene_indices <- which(selected_genes_coef != 0)
+
+# Hole die Spaltennamen (Gene) basierend auf den nicht-null Koeffizienten
+selected_gene_names <- colnames(merged_exprs_t)[selected_gene_indices]
+
+# Ausgabe der ausgewählten Gene
+selected_gene_names
+
+
+
+
+
+
+
+
+
 
 
 
