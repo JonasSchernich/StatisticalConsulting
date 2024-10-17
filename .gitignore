@@ -133,8 +133,12 @@ cython_debug/
 
 # Data files
 *.Rds
+*.plk
+*.csv
 # Docu Files
 *.pdf
 *.docx
+
+
 
 .Rproj.user

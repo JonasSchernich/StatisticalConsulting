@@ -42,7 +42,7 @@ plt.xticks(range(len(psa_stats)), psa_stats['cohort_name'], rotation=45, ha='rig
 plt.title('Verteilung der PRE_OPERATIVE_PSA-Werte nach Kohorte')
 plt.ylabel('PRE_OPERATIVE_PSA')
 plt.tight_layout()
-plt.show()
+#plt.show()
 
 # Optional: Logarithmische Skala für bessere Darstellung bei großen Unterschieden
 plt.figure(figsize=(12, 6))
@@ -64,7 +64,7 @@ plt.xticks(range(len(psa_stats)), psa_stats['cohort_name'], rotation=45, ha='rig
 plt.title('Verteilung der PRE_OPERATIVE_PSA-Werte nach Kohorte (Log-Skala)')
 plt.ylabel('PRE_OPERATIVE_PSA (Log-Skala)')
 plt.tight_layout()
-plt.show()
+#plt.show()
 
 # Ausgabe der PSA-Statistiken als Tabelle
 print(psa_stats.to_string(index=False))
@@ -90,34 +90,34 @@ print(desc_stats)
 
 
 
+relevant_columns = preprocessed_data['merged_pData'][['AGE', 'TISSUE', 'PATH_T_STAGE', 'GLEASON_SCORE', 'GLEASON_SCORE_1', 'GLEASON_SCORE_2', 'CEP_STATUS', 'MONTH_TO_CEP', 'PRE_OPERATIVE_PSA', 'MONTH_TO_BCR', 'CLIN_T_STAGE', 'BCR_STATUS']]
+
+mismatch_mask = relevant_columns['CEP_STATUS'] != relevant_columns['BCR_STATUS']
+
+# Extrahiere die Indizes der Zeilen, in denen die Werte unterschiedlich sind
+mismatch_indices = relevant_columns[mismatch_mask].index.tolist()
+
+# Wenn keine Unterschiede vorhanden sind, gib True zurück, andernfalls die Liste der Zeilen
+if len(mismatch_indices) == 0:
+    result = True
+else:
+    result = mismatch_indices
+
+# Ausgabe des Ergebnisses
+print(result)
+print(test)
+
+#%%
+print('T')
 
 
 
 
 
 
-from lifelines import KaplanMeierFitter
-
-# genutze variablen ignorieren, wollte nur mal versuchen eine KM in python zu plotten
-kmf = KaplanMeierFitter()
-T = preprocessed_data['merged_pData']['MONTH_TO_BCR']
-E = preprocessed_data['merged_pData']['CEP_STATUS']
-
-kmf.fit(T, E)
-kmf.plot()
-plt.title('Kaplan-Meier Überlebenskurve')
-plt.show()
 
 
-#Vergleich von Überlebenskurven für verschiedene Gruppen
-groups = preprocessed_data['merged_pData']['risk_group']
-for group in groups.unique():
-    mask = groups == group
-    kmf.fit(T[mask], E[mask], label=group)
-    kmf.plot()
 
-plt.title('Kaplan-Meier Überlebenskurven nach Risikogruppe')
-plt.show()
 
 
 

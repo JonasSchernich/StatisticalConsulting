@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 
 
 class CohortStats:
@@ -84,6 +83,10 @@ class CohortStats:
             'bcr_q25': bcr_data.quantile(0.25),
             'bcr_q75': bcr_data.quantile(0.75)
         })
+
+        # Calculate proportion of patients with BCR_STATUS = 1
+        bcr_count = (pdata['BCR_STATUS'] == 1).sum()
+        stats['bcr_proportion'] = bcr_count / len(pdata) if len(pdata) > 0 else 0
 
         # Gene count
         stats['gene_count'] = exprs.index.nunique()
