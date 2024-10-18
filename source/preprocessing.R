@@ -1,25 +1,27 @@
+'''
+- wd sollte "~/Code/source" sein
+- code ist noch nicht final (imputationsmethoden etc) aber struktur sollte passen
+'''
 library(Biobase)
 library(mice)
 library(dplyr)
 library(impute)
+
 # Function to load and convert ExpressionSet objects
-load_cohorts <- function(rds_file_path) {
-  # Load the RDS file
-  cohorts <- readRDS(rds_file_path)
-  
-  # Function to convert ExpressionSet to list of data frames
-  convertExpressionSet <- function(eset) {
-    list(
-      pData = as.data.frame(pData(eset)),
-      fData = as.data.frame(fData(eset)),
-      exprs = as.data.frame(exprs(eset))
-    )
+load_cohorts <- function(rds_file_paths) {
+  all_cohorts <- list()
+  for (rds_file_path in rds_file_paths) {
+    cohorts <- readRDS(file.path("..", "data", rds_file_path))
+    cohorts_list <- lapply(cohorts, function(eset) {
+      list(
+        pData = as.data.frame(pData(eset)),
+        fData = as.data.frame(fData(eset)),
+        exprs = as.data.frame(exprs(eset))
+      )
+    })
+    all_cohorts <- c(all_cohorts, cohorts_list)
   }
-  
-  # Convert all cohorts to list of data frames
-  cohorts_list <- lapply(cohorts, convertExpressionSet)
-  
-  return(cohorts_list)
+  return(all_cohorts)
 }
 
 # Function to standardize expression data
@@ -31,79 +33,101 @@ standardize <- function(z) {
   return(rv)
 }
 
-# Main process
-main <- function() {
-  # Load the data
-  rds_file_path <- file.path("Data", "PCa_cohorts.Rds")
-  cohorts <- load_cohorts(rds_file_path)
-  
-  # Standardize expression data for all cohorts
-  for (i in seq_along(cohorts)) {
-    cohorts[[i]]$exprs <- standardize(as.matrix(cohorts[[i]]$exprs))
+# Function to create CSV files for individual cohorts
+create_cohort_csvs <- function(processed_cohorts) {
+  # pData
+  pdata_dir <- file.path("..", "data", "cohort_data", "pData", "original")
+  dir.create(pdata_dir, recursive = TRUE, showWarnings = FALSE)
+  for (i in seq_along(processed_cohorts)) {
+    name <- names(processed_cohorts)[i]
+    write.csv(processed_cohorts[[i]]$pData, file.path(pdata_dir, paste0("cohort_", name, ".csv")), row.names = TRUE)
   }
   
-  # Return the processed cohorts
-  return(cohorts)
+  # exprs
+  exprs_dir <- file.path("..", "data", "cohort_data", "exprs")
+  dir.create(exprs_dir, recursive = TRUE, showWarnings = FALSE)
+  for (i in seq_along(processed_cohorts)) {
+    name <- names(processed_cohorts)[i]
+    write.csv(processed_cohorts[[i]]$exprs, file.path(exprs_dir, paste0("exprs_", name, ".csv")), row.names = TRUE)
+  }
 }
 
-# Run the main process
-processed_cohorts <- main()
-
-
-
-
-
-
-
-################# einzelne Kohorten pData
-output_dir <- file.path("..", "Data", "cohort_data", "pData", "original")
-for (i in seq_along(processed_cohorts)) {
-  name <- names(processed_cohorts[i])
-  data <- processed_cohorts[[i]]$pData
-  csv_file <- file.path(output_dir, paste0("cohort_", name, ".csv"))
-  write.csv(data, file = csv_file, row.names = TRUE)
+create_merged_csvs <- function(processed_cohorts) {
+  # Define relevant columns
+  rel_cols <- c('AGE', 'TISSUE', 'PATH_T_STAGE', 'GLEASON_SCORE', 'GLEASON_SCORE_1', 'GLEASON_SCORE_2', 
+                'CEP_STATUS', 'MONTH_TO_CEP', 'PRE_OPERATIVE_PSA', 'MONTH_TO_BCR', 'CLIN_T_STAGE', 'BCR_STATUS')
+  
+  # Merged pData
+  pdata_list <- lapply(processed_cohorts, function(x) x$pData)
+  
+  # Find common columns across all pData dataframes and intersect with rel_cols
+  common_columns <- Reduce(intersect, c(list(rel_cols), lapply(pdata_list, colnames)))
+  
+  # Merge pData, keeping only common relevant columns
+  merged_pdata <- do.call(rbind, lapply(pdata_list, function(x) x[, common_columns, drop = FALSE]))
+  
+  merged_pdata_dir <- file.path("..", "data", "merged_data", "pData", "original")
+  dir.create(merged_pdata_dir, recursive = TRUE, showWarnings = FALSE)
+  write.csv(merged_pdata, file.path(merged_pdata_dir, "merged_original_pData.csv"), row.names = TRUE)
+  
+  # Merged exprs (intersection)
+  create_merged_exprs <- function(cohorts_dict) {
+    # Extract exprs dataframes from cohorts
+    exprs_dfs <- lapply(cohorts_dict, function(cohort_data) {
+      if ('exprs' %in% names(cohort_data)) {
+        return(cohort_data$exprs)
+      }
+      return(NULL)
+    })
+    exprs_dfs <- exprs_dfs[!sapply(exprs_dfs, is.null)]
+    
+    # Find common genes (row names)
+    common_genes <- Reduce(intersect, lapply(exprs_dfs, rownames))
+    
+    # Filter dataframes for common genes
+    filtered_exprs_dfs <- lapply(exprs_dfs, function(df) {
+      df[common_genes, , drop = FALSE]
+    })
+    
+    # Merge dataframes
+    merged_exprs <- do.call(cbind, filtered_exprs_dfs)
+    
+    return(merged_exprs)
+  }
+  
+  merged_exprs <- create_merged_exprs(processed_cohorts)
+  
+  merged_exprs_dir <- file.path("..", "data", "merged_data", "exprs", "intersection")
+  dir.create(merged_exprs_dir, recursive = TRUE, showWarnings = FALSE)
+  write.csv(merged_exprs, file.path(merged_exprs_dir, "exprs_intersect.csv"), row.names = TRUE)
+  
+  return(list(merged_pdata = merged_pdata, merged_exprs = merged_exprs))
 }
 
-################# einzelne Kohorten exprs
-output_dir <- file.path("..", "Data", "cohort_data", "exprs")
-for (i in seq_along(processed_cohorts)) {
-  name <- names(processed_cohorts[i])
-  data <- processed_cohorts[[i]]$exprs
-  csv_file <- file.path(output_dir, paste0("exprs_", name, ".csv"))
-  write.csv(data, file = csv_file, row.names = TRUE)
-}
-
-################## mice für einzlene Kohorten pData
-# Generelle zu klären: Was machen wir mit NA Spalten in einigen Kohorten?
-# Aktuell: Ich imputiere innerhalb einzelner kohorten und entferne dafür NA columns, füge sie aber zum schluss wieder hinzu. Im nächsten schritt könnten dann ganze NA columns imputed werden
-# Problem damit: Wir nutzen relativ wenig Beobachtungen für die imputation + die imputation basiert nicht in allen DFs auf den gleichen Daten (weil bei manchen eben NA spalten entfernt werden)
-# Alternative: Spalten die in einigen DFs NA sind in allen entfernen, dann die DFs mergen und über alle imputieren. So würden für alle die gleichen Spalten + deutlich mehr Patienten genutzt
-# Nachteil: Bei steigender Kohortenzahl ggf immer weniger nutzbare columns und ggf sind in einegen DFs einlzelne NA Werte in columns, die bei anderen komplett NA sind und dadurch hier nicht imputet werden
-# ggf ebste Alternative: DFs mergen und NA spalten als einzelne leere NA values betrachten. So werden sowohl NA Spalten, als auch einzlene NA values in einem Schritt gelöst
+# Function to impute cohort data
 impute_cohort_data <- function(cohort_data, rel_cols) {
-  # Subset für relevante Spalten
+  # Subset for relevant columns
   subset_data <- cohort_data[, intersect(names(cohort_data), rel_cols), drop = FALSE]
   
-  # Identifiziere Spalten, die komplett NA sind
+  # Identify columns that are completely NA
   na_cols <- names(subset_data)[colSums(is.na(subset_data)) == nrow(subset_data)]
   
-  # Entferne diese Spalten temporär
+  # Remove these columns temporarily
   subset_data_clean <- subset_data[, !names(subset_data) %in% na_cols, drop = FALSE]
   
-  # Umwandlung von Character-Spalten in Faktoren
+  # Convert character columns to factors
   subset_data_clean[] <- lapply(subset_data_clean, function(x) if (is.character(x)) as.factor(x) else x)
   
-  # Entferne Spalten mit nur einem einzigartigen Wert
+  # Remove columns with only one unique value
   subset_data_clean <- subset_data_clean[, sapply(subset_data_clean, function(x) length(unique(na.omit(x))) > 1), drop = FALSE]
   
-  # Führe mice durch
-  ## Was hier gute parameter für m und matix sind muss ich noch researchen
+  # Perform mice imputation
   imputed_data <- mice(subset_data_clean, m=5, maxit=50, method='pmm', seed=500)
   
-  # Vervollständige die Daten
+  # Complete the data
   completed_data <- complete(imputed_data)
   
-  # Füge die entfernten NA-Spalten wieder hinzu
+  # Add back the removed NA columns
   for (col in na_cols) {
     completed_data[[col]] <- NA
   }
@@ -111,209 +135,155 @@ impute_cohort_data <- function(cohort_data, rel_cols) {
   return(list(imputed = imputed_data, completed = completed_data))
 }
 
-# Relevante Spalten definieren
-rel_cols <- c('AGE', 'TISSUE', 'PATH_T_STAGE', 'GLEASON_SCORE', 'GLEASON_SCORE_1', 'GLEASON_SCORE_2', 'CEP_STATUS', 'MONTH_TO_CEP', 'PRE_OPERATIVE_PSA', 'MONTH_TO_BCR', 'CLIN_T_STAGE', 'BCR_STATUS')
-
-# Anwenden der Funktion auf alle Kohorten
-imputed_cohorts <- lapply(processed_cohorts, function(cohort) {
-  impute_cohort_data(cohort$pData, rel_cols)
-})
-
-
-
-output_dir <- file.path("..", "Data", "cohort_data", "pData", "imputed")
-
-for (i in seq_along(imputed_cohorts)) {
-  name <- names(imputed_cohorts[i])
-  data <- imputed_cohorts[[i]]$completed
-  csv_file <- file.path(output_dir, paste0("cohort_", name, "_imputed.csv"))
-  write.csv(data, file = csv_file, row.names = TRUE)
-}
-
-
-################################### Mice für gemergtedn DF
-
-# Funktion zum Mergen der pData Dataframes mit Typkonvertierung
-clean_numeric <- function(x) {
-  x <- gsub(",", ".", x)  # Replace comma with dot
-  x <- gsub("[^0-9.]", "", x)  # Remove any non-numeric characters except dot
-  as.numeric(x)
-}
+# Function to merge pData dataframes with type conversion
 merge_pdata <- function(processed_cohorts, rel_cols) {
-  merged_df <- data.frame()
+  pdata_list <- lapply(processed_cohorts, function(x) x$pData)
   
-  for (cohort_name in names(processed_cohorts)) {
-    pdata <- processed_cohorts[[cohort_name]]$pData
-    pdata <- pdata[, intersect(names(pdata), rel_cols), drop = FALSE]
-    
-    # Konvertiere Datentypen
-    pdata <- pdata %>%
-      mutate(across(everything(), as.character))  
-    
-    if (nrow(merged_df) == 0) {
-      merged_df <- pdata
-    } else {
-      merged_df <- bind_rows(merged_df, pdata)
-    }
-  }
+  # Find common columns across all pData dataframes
+  common_columns <- Reduce(intersect, lapply(pdata_list, colnames))
   
-  # Konvertiere Spalten zu angemessenen Datentypen
+  # Intersect common columns with rel_cols
+  common_rel_cols <- intersect(common_columns, rel_cols)
+  
+  merged_df <- do.call(rbind, lapply(pdata_list, function(x) x[, common_rel_cols, drop = FALSE]))
+  
+  # Convert columns to appropriate data types
   merged_df <- merged_df %>%
+    mutate(across(everything(), as.character)) %>%
     mutate(
-      AGE = clean_numeric(AGE),
-      GLEASON_SCORE = clean_numeric(GLEASON_SCORE),
-      GLEASON_SCORE_1 = clean_numeric(GLEASON_SCORE_1),
-      GLEASON_SCORE_2 = clean_numeric(GLEASON_SCORE_2),
-      MONTH_TO_CEP = clean_numeric(MONTH_TO_CEP),
-      PRE_OPERATIVE_PSA = clean_numeric(PRE_OPERATIVE_PSA),
-      MONTH_TO_BCR = clean_numeric(MONTH_TO_BCR),
-      BCR_STATUS = clean_numeric(BCR_STATUS),
+      AGE = as.numeric(AGE),
+      GLEASON_SCORE = as.numeric(GLEASON_SCORE),
+      GLEASON_SCORE_1 = as.numeric(GLEASON_SCORE_1),
+      GLEASON_SCORE_2 = as.numeric(GLEASON_SCORE_2),
+      MONTH_TO_CEP = as.numeric(MONTH_TO_CEP),
+      PRE_OPERATIVE_PSA = as.numeric(PRE_OPERATIVE_PSA),
+      MONTH_TO_BCR = as.numeric(MONTH_TO_BCR),
+      BCR_STATUS = as.numeric(BCR_STATUS),
       across(where(is.character), as.factor)
     )
   
   return(merged_df)
 }
 
-# Relevante Spalten definieren
-rel_cols <- c('AGE', 'TISSUE', 'PATH_T_STAGE', 'GLEASON_SCORE', 'GLEASON_SCORE_1', 'GLEASON_SCORE_2', 'CEP_STATUS', 'MONTH_TO_CEP', 'PRE_OPERATIVE_PSA', 'MONTH_TO_BCR', 'CLIN_T_STAGE', 'BCR_STATUS')
-
-# Merge alle pData Dataframes
-merged_pdata <- merge_pdata(processed_cohorts, rel_cols)
-
-# Führe mice Imputation durch
-imputed_data <- mice(merged_pdata, m = 5, maxit = 50, method = 'pmm', seed = 500)
-
-# Vervollständige die Daten
-completed_pData <- complete(imputed_data) 
-
-output_dir <- file.path("..", "Data", "merged_data", "pData", "imputed")
-csv_file <- file.path(output_dir, paste0("merged_imputed_pData", "_imputed.csv"))
-write.csv(data, file = csv_file, row.names = TRUE)
-
-
-
-############################ Gen Intersection
-############# exprs mergen und transponieren
-create_merged_exprs <- function(cohorts_dict) {
-  # Extract exprs dataframes from cohorts
-  exprs_dfs <- lapply(cohorts_dict, function(cohort_data) {
-    if ('exprs' %in% names(cohort_data)) {
-      return(cohort_data$exprs)
-    }
-    return(NULL)
-  })
-  exprs_dfs <- exprs_dfs[!sapply(exprs_dfs, is.null)]
-  
-  # Find common genes (row names)
-  common_genes <- Reduce(intersect, lapply(exprs_dfs, rownames))
-  
-  # Filter dataframes for common genes
-  filtered_exprs_dfs <- lapply(exprs_dfs, function(df) {
-    df[common_genes, , drop = FALSE]
-  })
-  
-  # Merge dataframes
-  merged_exprs <- do.call(cbind, filtered_exprs_dfs)
-  
-  return(merged_exprs)
-}
-
-merged_exprs <- create_merged_exprs(processed_cohorts)
-
-merged_exprs_t <- t(merged_exprs)
-
-output_dir <- file.path("..", "Data", "merged_data", "exprs", "intersection")
-csv_file <- file.path(output_dir, paste0("exprs_intersect", ".csv"))
-write.csv(merged_exprs_t, file = csv_file, row.names = TRUE)
-
-
-
-
-
-
-
-
-
-####################################### Common Genes
+# Function to create merged expression data for imputation
 create_merged_exprs_for_imputation <- function(cohorts_dict) {
-  # Extrahiere und transponiere exprs Dataframes aus den Kohorten
+  # Extract and transpose exprs dataframes from cohorts
   exprs_dfs <- lapply(cohorts_dict, function(cohort_data) {
     if ('exprs' %in% names(cohort_data)) {
-      return(t(cohort_data$exprs))  # Transponieren hier
+      return(t(cohort_data$exprs))
     }
     return(NULL)
   })
   exprs_dfs <- exprs_dfs[!sapply(exprs_dfs, is.null)]
   
-  # Finde alle einzigartigen Gene
+  # Find all unique genes
   all_genes <- Reduce(union, lapply(exprs_dfs, colnames))
   
-  # Erstelle einen leeren Dataframe mit allen Genen als Spalten
+  # Create an empty dataframe with all genes as columns
   all_exprs_merged <- data.frame(matrix(ncol = length(all_genes), nrow = 0))
   colnames(all_exprs_merged) <- all_genes
   
-  # Füge Daten aus jeder Kohorte hinzu
+  # Add data from each cohort
   for (df in exprs_dfs) {
-    # Erstelle einen temporären Dataframe mit allen Genen
     temp_df <- data.frame(matrix(NA, nrow = nrow(df), ncol = length(all_genes)))
     colnames(temp_df) <- all_genes
     
-    # Fülle die vorhandenen Daten ein
     common_genes <- intersect(colnames(df), all_genes)
     temp_df[, common_genes] <- df[, common_genes]
     
-    # Füge Zeilennamen hinzu 
     rownames(temp_df) <- rownames(df)
     
-    # Füge zum Dataframe hinzu
     all_exprs_merged <- rbind(all_exprs_merged, temp_df)
   }
   
   return(all_exprs_merged)
 }
 
-all_exprs_merged <- create_merged_exprs_for_imputation(processed_cohorts)
+# Main function
+main <- function(rds_file_names) {
+  # Load and preprocess cohorts
+  cohorts <- load_cohorts(rds_file_names)
+  
+  # Standardize expression data
+  processed_cohorts <- lapply(cohorts, function(cohort) {
+    cohort$exprs <- standardize(as.matrix(cohort$exprs))
+    return(cohort)
+  })
+  
+  # Create CSV files for individual cohorts
+  create_cohort_csvs(processed_cohorts)
+  
+  # Create CSV files for merged data
+  merged_data <- create_merged_csvs(processed_cohorts)
+  merged_pdata <- merged_data$merged_pdata
+  
+  # Define relevant columns for imputation
+  rel_cols <- c('AGE', 'TISSUE', 'PATH_T_STAGE', 'GLEASON_SCORE', 'GLEASON_SCORE_1', 'GLEASON_SCORE_2', 
+                'CEP_STATUS', 'MONTH_TO_CEP', 'PRE_OPERATIVE_PSA', 'MONTH_TO_BCR', 'CLIN_T_STAGE', 'BCR_STATUS')
+  
+  # Impute individual cohorts
+  imputed_cohorts <- lapply(processed_cohorts, function(cohort) {
+    impute_cohort_data(cohort$pData, rel_cols)
+  })
+  
+  # Save imputed individual cohorts
+  imputed_dir <- file.path("..", "data", "cohort_data", "pData", "imputed")
+  dir.create(imputed_dir, recursive = TRUE, showWarnings = FALSE)
+  for (i in seq_along(imputed_cohorts)) {
+    name <- names(imputed_cohorts)[i]
+    write.csv(imputed_cohorts[[i]]$completed, file.path(imputed_dir, paste0("cohort_", name, "_imputed.csv")), row.names = TRUE)
+  }
+  
+  # Merge pData
+  merged_pdata <- merge_pdata(processed_cohorts, rel_cols)
+  
+  # Impute merged pData
+  imputed_merged_data <- mice(merged_pdata, m = 5, maxit = 50, method = 'pmm', seed = 500)
+  completed_merged_pData <- complete(imputed_merged_data)
+  
+  # Save imputed merged pData
+  merged_imputed_dir <- file.path("..", "data", "merged_data", "pData", "imputed")
+  dir.create(merged_imputed_dir, recursive = TRUE, showWarnings = FALSE)
+  write.csv(completed_merged_pData, file.path(merged_imputed_dir, "merged_imputed_pData.csv"), row.names = TRUE)
+  
+  # Create merged expression data for imputation
+  all_exprs_merged <- create_merged_exprs_for_imputation(processed_cohorts)
+  
+  # Save all genes expression data
+  all_genes_dir <- file.path("..", "data", "merged_data", "exprs", "all_genes")
+  dir.create(all_genes_dir, recursive = TRUE, showWarnings = FALSE)
+  write.csv(all_exprs_merged, file.path(all_genes_dir, "all_genes.csv"), row.names = TRUE)
+  
+  # Filter expression data
+  missing_values <- colSums(is.na(all_exprs_merged))
+  total_rows <- nrow(all_exprs_merged)
+  valid_columns <- missing_values / total_rows < 0.2
+  filtered_exprs <- all_exprs_merged[, valid_columns]
+  
+  # Save common genes expression data
+  common_genes_dir <- file.path("..", "data", "merged_data", "exprs", "common_genes")
+  dir.create(common_genes_dir, recursive = TRUE, showWarnings = FALSE)
+  write.csv(filtered_exprs, file.path(common_genes_dir, "common_genes.csv"), row.names = TRUE)
+  
+  
+  # KNN imputation for expression data
+  imputed_expr_data <- impute.knn(as.matrix(filtered_exprs[, sapply(filtered_exprs, is.numeric)]))
+  imputed_expr_df <- as.data.frame(imputed_expr_data$data)
+  
+  # Save KNN imputed expression data
+  write.csv(imputed_expr_df, file.path(common_genes_dir, "common_genes_knn_imputed.csv"), row.names = TRUE)
+  
+  return(list(processed_cohorts = processed_cohorts, 
+              imputed_cohorts = imputed_cohorts, 
+              merged_pdata = merged_pdata,
+              completed_merged_pData = completed_merged_pData,
+              filtered_exprs = filtered_exprs,
+              imputed_expr_df = imputed_expr_df))
+}
 
-
-output_dir <- file.path("..", "Data", "merged_data", "exprs", "all_genes")
-csv_file <- file.path(output_dir, paste0("common_genes_knn_imputed", ".csv"))
-write.csv(all_exprs_merged, file = csv_file, row.names = TRUE)
-
-
-
-# Spalten mit zu vielen NAs entfernen
-missing_values <- colSums(is.na(all_exprs_merged))
-total_rows <- nrow(all_exprs_merged)
-
-valid_columns <- missing_values / total_rows < 0.2
-
-filtered_exprs <- all_exprs_merged[, valid_columns]
-
-output_dir <- file.path("..", "Data", "merged_data", "exprs", "common_genes")
-csv_file <- file.path(output_dir, paste0("common_genes", ".csv"))
-write.csv(filtered_exprs, file = csv_file, row.names = TRUE)
-
-
-#KNN imputation
-imputed_data <- impute.knn(as.matrix(filtered_exprs[, sapply(filtered_exprs, is.numeric)]))
-
-
-# Das Ergebnis ist eine Liste. Die imputierte Matrix ist im 'data' Element
-imputed_matrix <- imputed_data$data
-
-# Konvertiere zurück zu einem Dataframe, wenn nötig
-imputed_df <- as.data.frame(imputed_matrix)
-
-
-output_dir <- file.path("..", "Data", "merged_data", "exprs", "common_genes")
-csv_file <- file.path(output_dir, paste0("common_genes_knn_imputed", ".csv"))
-write.csv(filtered_exprs, file = csv_file, row.names = TRUE)
-
-
-
-
-
-
+# Run the main function
+rds_file_names <- c("PCa_cohorts.Rds") # more can be added for example c("PCa_cohorts.Rds", "PCa_cohorts_2.Rds")
+result <- main(rds_file_names)
 
 
 
