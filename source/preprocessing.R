@@ -1,7 +1,7 @@
-# load_and_preprocess.R
-
 library(Biobase)
-
+library(mice)
+library(dplyr)
+library(impute)
 # Function to load and convert ExpressionSet objects
 load_cohorts <- function(rds_file_path) {
   # Load the RDS file
@@ -53,8 +53,27 @@ processed_cohorts <- main()
 
 
 
-################## mice für einzlene Kohorten
-library(mice)
+
+
+################# einzelne Kohorten pData
+output_dir <- file.path("..", "Data", "cohort_data", "pData", "original")
+for (i in seq_along(processed_cohorts)) {
+  name <- names(processed_cohorts[i])
+  data <- processed_cohorts[[i]]$pData
+  csv_file <- file.path(output_dir, paste0("cohort_", name, ".csv"))
+  write.csv(data, file = csv_file, row.names = TRUE)
+}
+
+################# einzelne Kohorten exprs
+output_dir <- file.path("..", "Data", "cohort_data", "exprs")
+for (i in seq_along(processed_cohorts)) {
+  name <- names(processed_cohorts[i])
+  data <- processed_cohorts[[i]]$exprs
+  csv_file <- file.path(output_dir, paste0("exprs_", name, ".csv"))
+  write.csv(data, file = csv_file, row.names = TRUE)
+}
+
+################## mice für einzlene Kohorten pData
 # Generelle zu klären: Was machen wir mit NA Spalten in einigen Kohorten?
 # Aktuell: Ich imputiere innerhalb einzelner kohorten und entferne dafür NA columns, füge sie aber zum schluss wieder hinzu. Im nächsten schritt könnten dann ganze NA columns imputed werden
 # Problem damit: Wir nutzen relativ wenig Beobachtungen für die imputation + die imputation basiert nicht in allen DFs auf den gleichen Daten (weil bei manchen eben NA spalten entfernt werden)
@@ -102,9 +121,17 @@ imputed_cohorts <- lapply(processed_cohorts, function(cohort) {
 
 
 
+output_dir <- file.path("..", "Data", "cohort_data", "pData", "imputed")
+
+for (i in seq_along(imputed_cohorts)) {
+  name <- names(imputed_cohorts[i])
+  data <- imputed_cohorts[[i]]$completed
+  csv_file <- file.path(output_dir, paste0("cohort_", name, "_imputed.csv"))
+  write.csv(data, file = csv_file, row.names = TRUE)
+}
+
+
 ################################### Mice für gemergtedn DF
-library(mice)
-library(dplyr)
 
 # Funktion zum Mergen der pData Dataframes mit Typkonvertierung
 clean_numeric <- function(x) {
@@ -153,17 +180,19 @@ rel_cols <- c('AGE', 'TISSUE', 'PATH_T_STAGE', 'GLEASON_SCORE', 'GLEASON_SCORE_1
 # Merge alle pData Dataframes
 merged_pdata <- merge_pdata(processed_cohorts, rel_cols)
 
-# Überprüfung der Datentypen
-str(merged_pdata)
-
 # Führe mice Imputation durch
 imputed_data <- mice(merged_pdata, m = 5, maxit = 50, method = 'pmm', seed = 500)
 
 # Vervollständige die Daten
 completed_pData <- complete(imputed_data) 
 
+output_dir <- file.path("..", "Data", "merged_data", "pData", "imputed")
+csv_file <- file.path(output_dir, paste0("merged_imputed_pData", "_imputed.csv"))
+write.csv(data, file = csv_file, row.names = TRUE)
 
 
+
+############################ Gen Intersection
 ############# exprs mergen und transponieren
 create_merged_exprs <- function(cohorts_dict) {
   # Extract exprs dataframes from cohorts
@@ -193,18 +222,19 @@ merged_exprs <- create_merged_exprs(processed_cohorts)
 
 merged_exprs_t <- t(merged_exprs)
 
-
-write.csv(merged_exprs_t, file = "merged_exprs_t.csv", row.names = TRUE)
-
-
-################################### Gen Daten imputation probieren
-
-############!!! generell schauen, ob es nicht sinnvoller ist spalten die nur in ganz wenigen Dendatensätzen vorhanden sind trotzdem zu droppen?
-library(impute)
+output_dir <- file.path("..", "Data", "merged_data", "exprs", "intersection")
+csv_file <- file.path(output_dir, paste0("exprs_intersect", ".csv"))
+write.csv(merged_exprs_t, file = csv_file, row.names = TRUE)
 
 
 
 
+
+
+
+
+
+####################################### Common Genes
 create_merged_exprs_for_imputation <- function(cohorts_dict) {
   # Extrahiere und transponiere exprs Dataframes aus den Kohorten
   exprs_dfs <- lapply(cohorts_dict, function(cohort_data) {
@@ -241,32 +271,27 @@ create_merged_exprs_for_imputation <- function(cohorts_dict) {
   
   return(all_exprs_merged)
 }
+
 all_exprs_merged <- create_merged_exprs_for_imputation(processed_cohorts)
 
 
-# Konvertiere den Dataframe in eine Matrix für impute.knn
-all_exprs_matrix <- as.matrix(all_exprs_merged)
+output_dir <- file.path("..", "Data", "merged_data", "exprs", "all_genes")
+csv_file <- file.path(output_dir, paste0("common_genes_knn_imputed", ".csv"))
+write.csv(all_exprs_merged, file = csv_file, row.names = TRUE)
 
-# Führe die kNN Imputation durch
-imputed_data <- impute.knn(all_exprs_matrix)
 
-# Das Ergebnis ist eine Liste. Die imputierte Matrix ist im 'data' Element
-imputed_matrix <- imputed_data$data
-
-# Konvertiere zurück zu einem Dataframe, wenn nötig
-imputed_df <- as.data.frame(imputed_matrix)
 
 # Spalten mit zu vielen NAs entfernen
 missing_values <- colSums(is.na(all_exprs_merged))
-
 total_rows <- nrow(all_exprs_merged)
 
 valid_columns <- missing_values / total_rows < 0.2
 
 filtered_exprs <- all_exprs_merged[, valid_columns]
 
-
-
+output_dir <- file.path("..", "Data", "merged_data", "exprs", "common_genes")
+csv_file <- file.path(output_dir, paste0("common_genes", ".csv"))
+write.csv(filtered_exprs, file = csv_file, row.names = TRUE)
 
 
 #KNN imputation
@@ -280,82 +305,9 @@ imputed_matrix <- imputed_data$data
 imputed_df <- as.data.frame(imputed_matrix)
 
 
-
-
-####### Testen wie gut die imputation klappt
-#####Aktuell lösche ich noch NA Werte, das muss man nochmal sinnvoller machen, ggf werte aus originalkohorten löschen und dann predictete werte mit den Werten aus riginalkohorten abgleichen
-library(caret)
-
-filtered_exprs_no_na <- na.omit(filtered_exprs)
-set.seed(123)
-
-# Funktion zum Einfügen von künstlichen NA-Werten
-insert_na <- function(x, prop = 0.1) {
-  is.na(x) <- sample(length(x), size = floor(prop * length(x)))
-  return(x)
-}
-
-# Erstellen Sie eine Kopie der Daten mit künstlichen NA-Werten
-data_with_na <- apply(filtered_exprs_no_na, 2, insert_na)
-
-# Führen Sie die Imputation durch
-imputed_test <- impute.knn(data_with_na)$data
-
-# Berechnen Sie den RMSE für die imputierten Werte
-rmse <- sqrt(mean((imputed_test[is.na(data_with_na)] - filtered_exprs_no_na[is.na(data_with_na)])^2))
-
-mean(imputed_df)
-means <- c()
-for (i in 1:ncol(imputed_df)) {
-  means[i] <- sd(imputed_df[, i])
-  
-}
-mean(means)
-
-
-
-
-
-
-
-
-
-
-
-
-################################### 
-install.packages("glmnet")
-library(glmnet)
-library(survival)
-### 0 time to event zeilen entfernen
-completed_pData_no_0_times <- completed_pData[completed_pData$MONTH_TO_BCR > 0,]
-subset_exprs <- merged_exprs_t[rownames(merged_exprs_t) %in% rownames(completed_pData_no_0_times), ]
-surv_object <- Surv(time = completed_pData_no_0_times$MONTH_TO_BCR, event = completed_pData_no_0_times$BCR_STATUS)
-
-X <- as.matrix(subset_exprs)
-fit <- glmnet(X, surv_object, family = "cox", alpha = 1)
-plot(fit)
-cv_fit <- cv.glmnet(X, surv_object, family = "cox", alpha = 1)
-plot(cv_fit)
-
-best_lambda <- cv_fit$lambda.1se
-best_lambda
-# Fit the final model with the optimal lambda
-final_model <- glmnet(X, surv_object, family = "cox", alpha = 1, lambda = best_lambda)
-
-
-# Extrahiere die Koeffizienten des finalen Modells
-selected_genes_coef <- coef(final_model)
-
-# Extrahiere die Gene mit nicht-null Koeffizienten
-selected_gene_indices <- which(selected_genes_coef != 0)
-
-# Hole die Spaltennamen (Gene) basierend auf den nicht-null Koeffizienten
-selected_gene_names <- colnames(merged_exprs_t)[selected_gene_indices]
-
-# Ausgabe der ausgewählten Gene
-selected_gene_names
-
+output_dir <- file.path("..", "Data", "merged_data", "exprs", "common_genes")
+csv_file <- file.path(output_dir, paste0("common_genes_knn_imputed", ".csv"))
+write.csv(filtered_exprs, file = csv_file, row.names = TRUE)
 
 
 
