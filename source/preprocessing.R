@@ -72,10 +72,12 @@ create_merged_csvs <- function(processed_cohorts) {
   
   # Merged exprs (intersection)
   create_merged_exprs <- function(cohorts_dict) {
-    # Extract exprs dataframes from cohorts
-    exprs_dfs <- lapply(cohorts_dict, function(cohort_data) {
+    exprs_dfs <- lapply(names(cohorts_dict), function(cohort_name) {
+      cohort_data <- cohorts_dict[[cohort_name]]
       if ('exprs' %in% names(cohort_data)) {
-        return(cohort_data$exprs)
+        exprs_df <- cohort_data$exprs
+        colnames(exprs_df) <- paste(cohort_name, colnames(exprs_df), sep=".")
+        return(exprs_df)
       }
       return(NULL)
     })
@@ -91,7 +93,7 @@ create_merged_csvs <- function(processed_cohorts) {
     
     # Merge dataframes
     merged_exprs <- do.call(cbind, filtered_exprs_dfs)
-    
+    merged_exprs <-  t(merged_exprs)
     return(merged_exprs)
   }
   
@@ -168,9 +170,12 @@ merge_pdata <- function(processed_cohorts, rel_cols) {
 # Function to create merged expression data for imputation
 create_merged_exprs_for_imputation <- function(cohorts_dict) {
   # Extract and transpose exprs dataframes from cohorts
-  exprs_dfs <- lapply(cohorts_dict, function(cohort_data) {
+  exprs_dfs <- lapply(names(cohorts_dict), function(cohort_name) {
+    cohort_data <- cohorts_dict[[cohort_name]]
     if ('exprs' %in% names(cohort_data)) {
-      return(t(cohort_data$exprs))
+      df <- t(cohort_data$exprs)
+      rownames(df) <- paste(cohort_name, rownames(df), sep=".")
+      return(df)
     }
     return(NULL)
   })
