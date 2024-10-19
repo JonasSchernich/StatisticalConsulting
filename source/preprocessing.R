@@ -40,7 +40,7 @@ create_cohort_csvs <- function(processed_cohorts) {
   dir.create(pdata_dir, recursive = TRUE, showWarnings = FALSE)
   for (i in seq_along(processed_cohorts)) {
     name <- names(processed_cohorts)[i]
-    write.csv(processed_cohorts[[i]]$pData, file.path(pdata_dir, paste0("cohort_", name, ".csv")), row.names = TRUE)
+    write.csv(processed_cohorts[[i]]$pData, file.path(pdata_dir, paste0(name, ".csv")), row.names = TRUE)
   }
   
   # exprs
@@ -48,7 +48,7 @@ create_cohort_csvs <- function(processed_cohorts) {
   dir.create(exprs_dir, recursive = TRUE, showWarnings = FALSE)
   for (i in seq_along(processed_cohorts)) {
     name <- names(processed_cohorts)[i]
-    write.csv(processed_cohorts[[i]]$exprs, file.path(exprs_dir, paste0("exprs_", name, ".csv")), row.names = TRUE)
+    write.csv(t(processed_cohorts[[i]]$exprs), file.path(exprs_dir, paste0(name, ".csv")), row.names = TRUE)
   }
 }
 
@@ -236,7 +236,7 @@ main <- function(rds_file_names) {
   dir.create(imputed_dir, recursive = TRUE, showWarnings = FALSE)
   for (i in seq_along(imputed_cohorts)) {
     name <- names(imputed_cohorts)[i]
-    write.csv(imputed_cohorts[[i]]$completed, file.path(imputed_dir, paste0("cohort_", name, "_imputed.csv")), row.names = TRUE)
+    write.csv(imputed_cohorts[[i]]$completed, file.path(imputed_dir, paste0(name, ".csv")), row.names = TRUE)
   }
   
   # Merge pData
