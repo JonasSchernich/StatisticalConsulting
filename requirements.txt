@@ -9,3 +9,4 @@ scikit-survival
 torch
 torchvision
 torchaudio
+xgboost
