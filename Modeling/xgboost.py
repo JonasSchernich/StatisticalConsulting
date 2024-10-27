@@ -10,14 +10,14 @@ import xgboost as xgb
 
 
 
-def create_xgb_data(df_pdata, times_col, events_col, df_exprs): 
+def create_xgb_data(df_pdata, df_pdata_X, times_col, events_col, df_exprs): 
     times = df_pdata[times_col]
     events = df_pdata[events_col]
     
     y_lower_bound = np.where(events == 1, times, times)  # Use event time for both cases
     y_upper_bound = np.where(events == 1, times, np.inf)  # Use +∞ for censored observations
     
-    X = pd.concat([df_pdata, df_exprs], axis = 1)
+    X = pd.concat([df_pdata_X, df_exprs], axis = 1)
     y = df_pdata[times_col]
     y_event = df_pdata[events_col]
     X_temp, X_test, y_temp, y_test, y_lower_temp, y_lower_test, y_upper_temp, y_upper_test, y_temp_event, y_test_event = train_test_split(X, y, y_lower_bound, y_upper_bound, y_event, test_size=0.2, random_state=42)
@@ -28,7 +28,7 @@ def create_xgb_data(df_pdata, times_col, events_col, df_exprs):
     dtest = xgb.DMatrix(X_test, label=y_test, label_lower_bound=y_lower_test, label_upper_bound=y_upper_test, enable_categorical = True)
     dvalid = xgb.DMatrix(X_valid, label=y_valid, label_lower_bound=y_lower_valid, label_upper_bound=y_upper_valid, enable_categorical = True)
     
-    return dtrain, dtest, dvalid
+    return dtrain, dtest, dvalid, y_train_event, y_test_event, y_valid_event
     
     
 
