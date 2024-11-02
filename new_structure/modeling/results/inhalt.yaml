@@ -1,0 +1,6 @@
+soll so files enthalten wie
+ config.yaml    # Verwendete Konfiguration
+model.pkl      # Gespeichertes Modell
+reducer.pkl    # Gespeicherte Dimensionsreduktion
+ metrics.json   # Performance Metriken
+plots/         # Generierte Plots
