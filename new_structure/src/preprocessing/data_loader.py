@@ -1,1 +1,1 @@
-# like current data loader
+# analog zum aktuellen data loader und dann ggf noch ein bisschen anpassen , dass er in die klassenlogik passt

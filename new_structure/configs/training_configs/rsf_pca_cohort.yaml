@@ -1,0 +1,21 @@
+# Nur ein Beispiel
+# Mode 1: RSF mit PCA, cohortweise
+
+experiment_name: "rsf_pca_cohort_baseline"
+
+model:
+  name: "rsf"
+  use_tuning: true
+
+data:
+  expression_data: "intersect"
+  use_clinical: true
+
+dimension_reduction:
+  perform: true
+  method: "pca"
+  n_components: 1000
+
+validation:
+  strategy: "cohort"
+  metrics: ["c_index", "feature_importance"]

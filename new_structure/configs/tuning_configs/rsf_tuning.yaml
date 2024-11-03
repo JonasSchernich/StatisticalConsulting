@@ -1,0 +1,25 @@
+tuning:
+ strategy: "random"
+ n_iterations: 50
+ cv_folds: 5
+ scoring: "c_index"
+ n_jobs: -1
+
+# parameter die getunt werden sollen
+tuning_params:
+ n_estimators:
+   range: [500, 2000]
+   type: "int"
+   strategy: "log-uniform"
+
+ max_depth:
+   values: [3, 4, 5, 6]
+   type: "int"
+
+ min_samples_split:
+   range: [2, 20]
+   type: "int"
+
+ min_samples_leaf:
+   range: [1, 10]
+   type: "int"

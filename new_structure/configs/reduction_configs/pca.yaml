@@ -1,0 +1,7 @@
+#erstmal nur ei Beispiel
+reduction_params:
+  n_components: 1000
+  whiten: true
+  scale: true
+  center: true
+  random_state: 42

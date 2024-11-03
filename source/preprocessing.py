@@ -5,7 +5,7 @@ class DataLoader:
     def __init__(self, base_path):
         # Initialize with the base path, and set up paths to relevant directories
         self.base_path = base_path
-        self.data_path = os.path.join(base_path, 'Data')
+        self.data_path = os.path.join(base_path, 'data')
         self.cohort_data_path = os.path.join(self.data_path, 'cohort_data')
         self.merged_data_path = os.path.join(self.data_path, 'merged_data')
 
