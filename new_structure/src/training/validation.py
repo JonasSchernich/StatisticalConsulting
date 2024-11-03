@@ -1,6 +1,6 @@
 """
 Validation Strategien und Metriken.
-Primär  während Training.
+Primär fürs Training.
 
 - Simple train/val split
 - K-fold CV
