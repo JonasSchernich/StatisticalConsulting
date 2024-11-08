@@ -22,8 +22,8 @@ class PenCoxModel(BaseSurvivalModel):
         pipe = Pipeline(pipeline_steps)     
 
         if params_cv is not None: 
-            temp_pipe = make_pipeline(pipeline_steps).fit()
-            estimated_alphas = temp_pipe.named_steps["coxnetsurvivalanalysis"].alphas_
+            temp_pipe = Pipeline(pipeline_steps).fit(X, y)
+            estimated_alphas = temp_pipe.named_steps['model'].alphas_
             params_cv ={"coxnetsurvivalanalysis__alphas": [[v] for v in estimated_alphas]}
             group_kfold = LeaveOneGroupOut()
             gcv = GridSearchCV(estimator=pipe, 
@@ -49,7 +49,7 @@ class PenCoxModel(BaseSurvivalModel):
 
     
     def save_csv_gcv(self, gcv, path, fname, X):
-        best_model = gcv.best_estimator_.named_steps["coxnetsurvivalanalysis"]
+        best_model = gcv.best_estimator_.named_steps['model']
         best_coefs = pd.DataFrame(best_model.coef_, index=X.columns, columns=["coefficient"])
     
         non_zero = np.sum(best_coefs.iloc[:, 0] != 0)
@@ -62,10 +62,8 @@ class PenCoxModel(BaseSurvivalModel):
         'alpha_best_model' : best_model.alphas_[0].item(),
         'non_zero_genes' : non_zero_coefs.index.values.tolist(),      
         'non_zero_coeffs' : non_zero_coefs.coefficient.values.tolist()}
-        
-        csv_path = os.path.join(path, fname, '.csv')
+        fname = fname + '.csv'
+        csv_path = os.path.join(path, fname)
         cv_results = pd.DataFrame([result])
-        cv_results.to_csv(csv_path)
-        print(cv_results)        
-    
+        cv_results.to_csv(csv_path)    
     

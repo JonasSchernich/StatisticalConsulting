@@ -1,35 +1,22 @@
 from .base_model import BaseSurvivalModel
-from sksurv.ensemble import GradientBoostingSurvivalAnalysis
-from sklearn.model_selection import GroupKFold
-from dim_reduction.feature_selection import do_feat_sel
+import pandas as pd
 
 class GBModel(BaseSurvivalModel): 
-    def __init__(self, config):
+    def __init__(self, config = None):
         super().__init__(config)
-        self.model = GradientBoostingSurvivalAnalysis()
-                
-        
-    def fit(self, X, y, do_res = False, do_nes_res = False, do_feat_sel = False, feat_sel_config = None, 
-            save_model = False, saving_path = None): 
-        if do_feat_sel: 
-            ### get selected X from do_feat_sel_config uing do_feat_sel from other packages
-            X = do_feat_sel()
+    
+    def get_feature_importance(self, X, model = None):
+        if model is None: 
+            feature_importance = pd.DataFrame({
+            'feature': X.columns,
+            'importance': self.model.feature_importances_}).sort_values('importance', ascending=False)
         else: 
-            if do_res: 
-                pass 
-            elif do_nes_res: 
-                pass
-            else: 
-                self.model.fit(X, y)
-                return self.model
-            
+            feature_importance = pd.DataFrame({
+            'feature': X.columns,
+            'importance': model.feature_importances_}).sort_values('importance', ascending=False)
+        return feature_importance
     
     
-    def do_res(self, n_folds, group = "cohort"):
-        pass 
-    
-    def do_nes_res(self, n_folds_outer, n_folds_inner, group = "cohort"):
-        pass
     
     
     

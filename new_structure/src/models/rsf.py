@@ -17,11 +17,8 @@ from sklearn.inspection import permutation_importance
 
 
 class RSFModel(BaseSurvivalModel):
-    def __init__(self, config):
+    def __init__(self, config = None):
         super().__init__(config)
-
-    def fit(self, X, y, fname, path, pipeline_steps, params_cv= None, params_feat_sel = None, refit = False, save_model = False):
-        super().fit_model(self, X, y, fname, path, pipeline_steps, params_cv= None, params_feat_sel = None, refit = False, save_model = False)
         
     def predict(self, X, what = None):
         if what is None: 
@@ -31,8 +28,11 @@ class RSFModel(BaseSurvivalModel):
             # vgl : https://scikit-survival.readthedocs.io/en/stable/user_guide/random-survival-forest.html
             pass
            
-    def get_feature_importance(self, X, y, model, feat_imp_type, path):
-        result = permutation_importance(model, X, y, n_repeats=15, random_state=123)
+    def get_feature_importance(self, X, y, model = None, n_repeats = 5, feat_imp_type = None):
+        if model is None: 
+            result = permutation_importance(self.model, X, y, n_repeats=n_repeats, random_state=123)
+        else: 
+            result = permutation_importance(model, X, y, n_repeats=n_repeats, random_state=123)
         
         df_result = pd.DataFrame(
             {k: result[k] for k in (
