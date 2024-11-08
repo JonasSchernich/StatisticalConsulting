@@ -39,10 +39,9 @@ class SurvivalMetrics:
     def c_index(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
         """
         Calc C-index using lifelines.
-
         """
         event_times = y_true['time']
-        event_status = y_true['status']
+        event_status = y_true['event']  # Changed from 'status' to 'event'
 
         try:
             c_index = concordance_index(event_times, -y_pred, event_status)
